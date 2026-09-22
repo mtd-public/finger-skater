@@ -1,40 +1,68 @@
-// One-thumb controls. Every touch is both a steer and a "hold":
-//   - drag (while held): weave left/right, relative to where you touched
-//   - hold on the ground: charge an ollie; release to jump (longer = higher)
-//   - hold in the air: grab the board (trick); release before you land!
-// Keyboard: ←/→ or A/D weave, Space (or ↑/W) is the hold.
-// main.js decides what a hold means; this only reports presses and releases.
+// Twin controls: a virtual joystick on the left steers (and balances on a rail),
+// a button on the right is the "hold": charge an ollie on the ground, release to
+// jump; hold again in the air to grab the board, release before landing.
+// Keyboard: ←/→ or A/D steer, Space (or ↑/W) is the hold.
+// main.js decides what a hold means; this only reports presses, releases and the steer axis.
 export class Input {
-  constructor(el) {
-    this.el = el;
-    this.pointerId = null;
-    this.lastX = 0;
-    this.dragPx = 0; // horizontal drag since the last read()
+  constructor(joystickEl, buttonEl) {
+    this.enabled = false;
+    this.joyAxis = 0; // -1..1, left/right deflection of the stick
     this.holdStart = 0; // performance.now() when the current hold began, 0 = not holding
     this.queue = []; // 'press' | 'release' | 'cancel', in order
     this.keys = new Set();
-    this.enabled = false;
 
-    el.addEventListener('pointerdown', (e) => {
-      if (!this.enabled || this.pointerId !== null) return;
+    const stick = joystickEl.querySelector('.joy-stick');
+    const RADIUS = 38; // px of stick travel from centre
+    let joyId = null;
+    let center = { x: 0, y: 0 };
+
+    const joyDrag = (e) => {
+      if (e.pointerId !== joyId) return;
+      const dx = e.clientX - center.x, dy = e.clientY - center.y;
+      const dist = Math.min(RADIUS, Math.hypot(dx, dy));
+      const ang = Math.atan2(dy, dx);
+      const sx = Math.cos(ang) * dist, sy = Math.sin(ang) * dist;
+      stick.style.transform = `translate(${sx}px, ${sy}px)`;
+      this.joyAxis = sx / RADIUS;
+    };
+    const joyEnd = (e) => {
+      if (e.pointerId !== joyId) return;
+      joyId = null;
+      this.joyAxis = 0;
+      stick.style.transform = '';
+      joystickEl.classList.remove('active');
+    };
+    joystickEl.addEventListener('pointerdown', (e) => {
+      if (!this.enabled || joyId !== null) return;
       e.preventDefault();
-      this.pointerId = e.pointerId;
-      this.lastX = e.clientX;
+      joyId = e.pointerId;
+      const r = joystickEl.getBoundingClientRect();
+      center = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      joystickEl.classList.add('active');
+      joyDrag(e);
+      try { joystickEl.setPointerCapture(e.pointerId); } catch (_) { /* synthetic events */ }
+    });
+    joystickEl.addEventListener('pointermove', joyDrag);
+    joystickEl.addEventListener('pointerup', joyEnd);
+    joystickEl.addEventListener('pointercancel', joyEnd);
+
+    let btnId = null;
+    buttonEl.addEventListener('pointerdown', (e) => {
+      if (!this.enabled || btnId !== null) return;
+      e.preventDefault();
+      btnId = e.pointerId;
+      buttonEl.classList.add('pressed');
       this._press();
-      try { el.setPointerCapture(e.pointerId); } catch (_) { /* synthetic events */ }
+      try { buttonEl.setPointerCapture(e.pointerId); } catch (_) { /* synthetic events */ }
     });
-    el.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== this.pointerId) return;
-      this.dragPx += e.clientX - this.lastX;
-      this.lastX = e.clientX;
-    });
-    const up = (e) => {
-      if (e.pointerId !== this.pointerId) return;
-      this.pointerId = null;
+    const btnUp = (e) => {
+      if (e.pointerId !== btnId) return;
+      btnId = null;
+      buttonEl.classList.remove('pressed');
       if (!this._keyHeld()) this._release(e.type === 'pointerup' ? 'release' : 'cancel');
     };
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', up);
+    buttonEl.addEventListener('pointerup', btnUp);
+    buttonEl.addEventListener('pointercancel', btnUp);
 
     addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase();
@@ -46,9 +74,18 @@ export class Input {
     addEventListener('keyup', (e) => {
       const k = e.key.toLowerCase();
       this.keys.delete(k);
-      if (HOLD_KEYS.includes(k) && this.pointerId === null && !this._keyHeld()) this._release('release');
+      if (HOLD_KEYS.includes(k) && btnId === null && !this._keyHeld()) this._release('release');
     });
     addEventListener('blur', () => this.reset());
+
+    this._resetTouch = () => {
+      joyId = null;
+      this.joyAxis = 0;
+      stick.style.transform = '';
+      joystickEl.classList.remove('active');
+      btnId = null;
+      buttonEl.classList.remove('pressed');
+    };
   }
 
   _keyHeld() { return HOLD_KEYS.some((j) => this.keys.has(j)); }
@@ -67,7 +104,7 @@ export class Input {
 
   get holding() { return this.holdStart !== 0; }
 
-  // Keyboard steer axis (-1..1).
+  // Keyboard steer axis (-1..1), added on top of the joystick.
   get keyAxis() {
     const k = this.keys;
     return ((k.has('arrowright') || k.has('d')) ? 1 : 0) - ((k.has('arrowleft') || k.has('a')) ? 1 : 0);
@@ -79,17 +116,15 @@ export class Input {
   }
 
   read() {
-    const out = { dragPx: this.dragPx, events: this.queue.splice(0) };
-    this.dragPx = 0;
+    const out = { events: this.queue.splice(0) };
     return out;
   }
 
   reset() {
-    this.pointerId = null;
     this.holdStart = 0;
-    this.dragPx = 0;
     this.queue = [];
     this.keys.clear();
+    this._resetTouch();
   }
 }
 
