@@ -14,7 +14,7 @@ const VIEWS = [
   { name: 'Low-left', yaw: -0.4, pitch: 34, zoom: 8.5 },
 ];
 let view = VIEWS[loadView()];
-const DRAG_GAIN = 1.25; // lateral metres per metre of finger travel (in world units on screen)
+const STEER_SPEED = 12; // lateral metres/second at full joystick or key deflection
 const STREAK_STEP = 150; // metres without a hit per multiplier level
 const MAX_MULT = 5;
 const CHARGE_TIME = 0.8; // seconds of holding for a full-power ollie
@@ -94,6 +94,7 @@ const hudEl = $('hud');
 const livesEl = $('lives');
 for (let i = 0; i < MAX_HITS; i++) livesEl.appendChild(Object.assign(document.createElement('div'), { className: 'life' }));
 const chargeEl = $('charge'), chargeFill = $('charge-fill');
+const jumpBtn = $('jump-btn');
 const balEl = $('balance'), balNeedle = $('bal-needle'), balLbl = $('bal-lbl');
 const airEl = $('air'), airFill = $('air-fill'), airTime = $('air-time'), airTrick = $('air-trick');
 const tmpV = new THREE.Vector3();
@@ -132,7 +133,7 @@ function renderLives() {
 }
 
 // ---------- game state ----------
-const input = new Input(canvas);
+const input = new Input($('joystick'), $('jump-btn'));
 const sfx = new Sfx();
 let world, player, fx;
 const state = { mode: 'loading', score: 0, dist: 0, streak: 0, mult: 1, ramps: 0, hops: 0, best: loadBest() };
@@ -345,8 +346,7 @@ function loop(now) {
 
   if (playing || bailing) {
     const raw = input.read();
-    const wpp = (camera.right - camera.left) / innerWidth; // world metres per CSS pixel
-    const dx = raw.dragPx * wpp * DRAG_GAIN / Math.cos(view.yaw) + input.keyAxis * 12 * dt;
+    const dx = (input.joyAxis + input.keyAxis) * STEER_SPEED * dt;
     const baseSpeed = Math.min(17, 9 + state.dist / 220);
     const z0 = player.z;
     const wasFull = player.charge >= 1;
@@ -407,6 +407,7 @@ function updateHud() {
     chargeFill.style.strokeDasharray = `${Math.round(c * 100)} 100`;
     chargeEl.classList.toggle('full', c >= 1);
   }
+  jumpBtn.classList.toggle('full', on && c >= 1);
   // Balance meter while grinding.
   const grinding = !!player.grind && state.mode === 'playing';
   balEl.classList.toggle('on', grinding);
