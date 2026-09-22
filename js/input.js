@@ -1,10 +1,11 @@
-// Twin controls: a virtual joystick on the left steers (and balances on a rail),
-// a button on the right is the "hold": charge an ollie on the ground, release to
+// Twin touch zones covering each half of the screen: touching down anywhere on the
+// left steers (a virtual joystick appears under the thumb, wherever it lands), and
+// anywhere on the right is the "hold": charge an ollie on the ground, release to
 // jump; hold again in the air to grab the board, release before landing.
 // Keyboard: ←/→ or A/D steer, Space (or ↑/W) is the hold.
 // main.js decides what a hold means; this only reports presses, releases and the steer axis.
 export class Input {
-  constructor(joystickEl, buttonEl) {
+  constructor(joyZoneEl, joystickEl, jumpZoneEl, buttonEl) {
     this.enabled = false;
     this.joyAxis = 0; // -1..1, left/right deflection of the stick
     this.holdStart = 0; // performance.now() when the current hold began, 0 = not holding
@@ -13,6 +14,7 @@ export class Input {
 
     const stick = joystickEl.querySelector('.joy-stick');
     const RADIUS = 38; // px of stick travel from centre
+    const EDGE_MARGIN = 74; // keep the joystick graphic fully on screen
     let joyId = null;
     let center = { x: 0, y: 0 };
 
@@ -32,28 +34,34 @@ export class Input {
       stick.style.transform = '';
       joystickEl.classList.remove('active');
     };
-    joystickEl.addEventListener('pointerdown', (e) => {
+    joyZoneEl.addEventListener('pointerdown', (e) => {
       if (!this.enabled || joyId !== null) return;
       e.preventDefault();
       joyId = e.pointerId;
-      const r = joystickEl.getBoundingClientRect();
-      center = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      // The joystick appears centred under wherever the thumb touches down, clamped
+      // so its graphic never clips off the edge of the screen.
+      center = {
+        x: Math.min(Math.max(e.clientX, EDGE_MARGIN), innerWidth - EDGE_MARGIN),
+        y: Math.min(Math.max(e.clientY, EDGE_MARGIN), innerHeight - EDGE_MARGIN),
+      };
+      joystickEl.style.left = `${center.x}px`;
+      joystickEl.style.top = `${center.y}px`;
       joystickEl.classList.add('active');
       joyDrag(e);
-      try { joystickEl.setPointerCapture(e.pointerId); } catch (_) { /* synthetic events */ }
+      try { joyZoneEl.setPointerCapture(e.pointerId); } catch (_) { /* synthetic events */ }
     });
-    joystickEl.addEventListener('pointermove', joyDrag);
-    joystickEl.addEventListener('pointerup', joyEnd);
-    joystickEl.addEventListener('pointercancel', joyEnd);
+    joyZoneEl.addEventListener('pointermove', joyDrag);
+    joyZoneEl.addEventListener('pointerup', joyEnd);
+    joyZoneEl.addEventListener('pointercancel', joyEnd);
 
     let btnId = null;
-    buttonEl.addEventListener('pointerdown', (e) => {
+    jumpZoneEl.addEventListener('pointerdown', (e) => {
       if (!this.enabled || btnId !== null) return;
       e.preventDefault();
       btnId = e.pointerId;
       buttonEl.classList.add('pressed');
       this._press();
-      try { buttonEl.setPointerCapture(e.pointerId); } catch (_) { /* synthetic events */ }
+      try { jumpZoneEl.setPointerCapture(e.pointerId); } catch (_) { /* synthetic events */ }
     });
     const btnUp = (e) => {
       if (e.pointerId !== btnId) return;
@@ -61,8 +69,8 @@ export class Input {
       buttonEl.classList.remove('pressed');
       if (!this._keyHeld()) this._release(e.type === 'pointerup' ? 'release' : 'cancel');
     };
-    buttonEl.addEventListener('pointerup', btnUp);
-    buttonEl.addEventListener('pointercancel', btnUp);
+    jumpZoneEl.addEventListener('pointerup', btnUp);
+    jumpZoneEl.addEventListener('pointercancel', btnUp);
 
     addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase();
