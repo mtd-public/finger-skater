@@ -15,6 +15,7 @@ const VIEWS = [
 ];
 let view = VIEWS[loadView()];
 const STEER_SPEED = 12; // lateral metres/second at full joystick or key deflection
+const TRICK_BOOST = 1.12; // speed multiplier while the jump/trick button is held
 const STREAK_STEP = 150; // metres without a hit per multiplier level
 const MAX_MULT = 5;
 const CHARGE_TIME = 0.8; // seconds of holding for a full-power ollie
@@ -133,7 +134,7 @@ function renderLives() {
 }
 
 // ---------- game state ----------
-const input = new Input($('joystick'), $('jump-btn'));
+const input = new Input($('joy-zone'), $('joystick'), $('jump-zone'), $('jump-btn'));
 const sfx = new Sfx();
 let world, player, fx;
 const state = { mode: 'loading', score: 0, dist: 0, streak: 0, mult: 1, ramps: 0, hops: 0, best: loadBest() };
@@ -347,7 +348,7 @@ function loop(now) {
   if (playing || bailing) {
     const raw = input.read();
     const dx = (input.joyAxis + input.keyAxis) * STEER_SPEED * dt;
-    const baseSpeed = Math.min(17, 9 + state.dist / 220);
+    const baseSpeed = Math.min(17, 9 + state.dist / 220) * (input.holding ? TRICK_BOOST : 1);
     const z0 = player.z;
     const wasFull = player.charge >= 1;
     handleHold(raw.events);
